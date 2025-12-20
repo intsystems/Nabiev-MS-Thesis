@@ -1,192 +1,167 @@
-\documentclass[10pt,pdf,hyperref={unicode}]{beamer}
-
-\mode<presentation>
-{
-\usetheme{boxes}
+\documentclass{beamer}
 \beamertemplatenavigationsymbolsempty
-
+\usecolortheme{beaver}
+\setbeamertemplate{blocks}[rounded=true, shadow=true]
 \setbeamertemplate{footline}[page number]
-\setbeamersize{text margin left=0.5em, text margin right=0.5em}
-}
-
+%
 \usepackage[utf8]{inputenc}
-\usepackage[english, russian]{babel}
-\usepackage{bm}
-\usepackage{multirow}
-\usepackage{ragged2e}
-\usepackage{indentfirst}
-\usepackage{multicol}
+\usepackage[english,russian]{babel}
+\usepackage{amssymb,amsfonts,amsmath,mathtext}
 \usepackage{subfig}
-\usepackage{amsmath,amssymb}
-\usepackage{enumerate}
+\usepackage[all]{xy} % xy package for diagrams
+\usepackage{array}
+\usepackage{multicol}% many columns in slide
+\usepackage{hyperref}% urls
+\usepackage{hhline}%tables
+\usepackage{natbib}
+\usepackage{natbib}
+\usepackage{doi}
 \usepackage{mathtools}
-\usepackage{comment}
-\usepackage{multicol}
-
-\usepackage[all]{xy}
-
-\usepackage{tikz}
-\usetikzlibrary{positioning,arrows}
-
-\tikzstyle{name} = [parameters]
-\definecolor{name}{rgb}{0.5,0.5,0.5}
-
-\usepackage{caption}
-\captionsetup{skip=0pt,belowskip=0pt}
-
-\newtheorem{rustheorem}{Теорема}
-\newtheorem{russtatement}{Утверждение}
-\newtheorem{rusdefinition}{Определение}
-
-% colors
-\definecolor{darkgreen}{rgb}{0.0, 0.2, 0.13}
-\definecolor{darkcyan}{rgb}{0.0, 0.55, 0.55}
-
-\AtBeginEnvironment{figure}{\setcounter{subfigure}{0}}
-
-\captionsetup[subfloat]{labelformat=empty}
+% Your figures are here:
+\graphicspath{ {fig/} {../fig/} }
 
 %----------------------------------------------------------------------------------------------------------
-
-\title[Пример слайдов по работе]{Пример слайдов по работе \\ курса}
-\author{И.\,О.\,Фамилия}
-
-\institute[]{Московский физико-технический институт}
-\date[2022]{\small 10\;февраля\;2022\,г.}
-
-%---------------------------------------------------------------------------------------------------------
+\title{Дистилляция разнородных моделей в глубоком обучении}
+\author[М.\,Ф. Набиев]{
+    Набиев Мухаммадшариф Фуркатович \\
+    Научный руководитель: к.ф.-м.н. О.\,Ю.~Бахтеев
+}
+\institute[Московский физико-технический институт]{
+\small{
+    Московский физико-технический институт \\
+    Кафедра интеллектуальных систем ФПМИ МФТИ 
+}}
+\date{2025}
+%----------------------------------------------------------------------------------------------------------
 \begin{document}
-
+%----------------------------------------------------------------------------------------------------------
 \begin{frame}
-\titlepage
+\thispagestyle{empty}
+\maketitle
 \end{frame}
-
+%---------------------------------------------------------------------------------------------------
+\begin{frame}{Цель исследования}
+\textbf{Проблема:} Методы дистилляции для \emph{разнородных} архитектур (например, RNN $\leftrightarrow$ CNN) обычно сопоставляют отдельные признаки, но слабо учитывают \textbf{распределение} скрытых представлений и их \textbf{поток} по слоям.
+\newline 
+\newline 
+\textbf{Цель:} Предложить метод дистилляции разнородных моделей учитывающий распределение скрытых представлений.
+\newline
+\newline
+\textbf{Решение:} Свести набор скрытых состояний к компактным матричным статистикам и выровнить их учитывая стоимость и вес переноса.
+\end{frame}
+%-------------------------------------------------------------------------------------------------- 
+\begin{frame}{Постановка задачи}
+\small
+Пусть \(\mathfrak{D} = \{(\mathbf{x}_i, y_i)\}_{i=1}^n\)~-- набор изорбражений. Рассмотрим две модели \(R\) (RNN) и \(C\) (CNN). Их скрытые представления:
+\[
+    \mathbf{h}_1^R, \dots, \mathbf{h}_K^R \in \mathbb{R}^{D_1} \quad \text{и} \quad 
+    \mathbf{A}_1^C, \dots, \mathbf{A}_N^C \in \mathbb{R}^{D_2}
+\]
+Для аггрегации скрытых переменных введем 
+\[
+    \mathbf{F}_k^R = \mathbf{u}_k\mathbf{u}_k^T \in \mathbb{R}^{d\times d}, \; \text{где} \; \mathbf{u}_k = \operatorname{aggr}(\mathbf{h}^R_1, \dots, \mathbf{h}^R_K) \in \mathbb{R}^{d}
+\]
+\[
+    \mathbf{F}_j^C = \frac{1}{P_j} \mathbf{B}_j \mathbf{B}_j^T \in \mathbb{R}^{d\times d}, \; \text{где} \; \mathbf{B}_j = \operatorname{Flatten(}\operatorname{Conv}(\mathbf{A}_j^C)) \in \mathbb{R}^{d \times P_j}
+\]
+Имея набор аггрегированных матриц определеим матрицу стоимости \(\mathbf{C}\in \mathbf{R}^{K\times N}\), как \(C_{kj} = \| \mathbf{F}_k^R - \mathbf{F}_j^C \|_F^2\) и матрицу весов \(\boldsymbol{\Gamma} = \operatorname{Softmax(- \mathbf{C})}\).
+Минимизируем следуюущую функцию потерь, 
+\[
+    \mathcal{L} = \mathcal{L} + \lambda \mathbb{E}_{\mathbf{x}} \sum_{k=1}^K \sum_{j=1}^N \Gamma_{kj}(\mathbf{x}) C_{kj}(\mathbf{x})
+\]
+В зависимости от выбора учителя (RNN или CNN) можно нормировать $\boldsymbol{\Gamma}$ по строкам или по столбцам.
+\end{frame}
 %----------------------------------------------------------------------------------------------------------
-\section{Слайд об исследованиях}
-\begin{frame}{Слайд об исследованиях}
-\bigskip
-Исследуется проблема \ldots.
-\begin{block}{Цель исследования~---}
-предложить метод \ldots.
+\begin{frame}{FGMKD: цель исследования}
+\begin{block}{Проблема}
+На практике при дистилляции есть компромисс: чем сильнее мы заставляем студента копировать учителей (\textbf{fidelity}), тем не всегда лучше \textbf{обобщение} (generalization).
 \end{block}
-\begin{block}{Требуется предложить}
-\justifying
-\begin{enumerate}[1)]
-\item метод \ldots,
-\item метод \ldots,
-\item метод \ldots.
-\end{enumerate}
+
+\begin{block}{Цель}
+Исследовать зависимость fidelity и generalization при дистилляции с ансамблем учителей.
 \end{block}
-\begin{block}{Решение}
-Для \ldots.
+
+\begin{block}{Предложенный подход}
+Агрегировать учителей и обучать студента с коэффициентом $\lambda$ перед KL, чтобы получать фронт fidelity--generalization по $\lambda$.
 \end{block}
 \end{frame}
-
-%---------------------------------------------------------------------------------------------------------
-\section{Постановка задачи \ldots}
-\begin{frame}{Постановка задачи \ldots}
-Заданы
-\begin{enumerate}[1)]
-    \item признаки \ldots,
-    \item целевая переменная \ldots,
-    \item \ldots.
-\end{enumerate}
-
-\ldots
-
-\bigskip
-
-Требуется выбрать модель \ldots из множества
-\[
-	\mathfrak{G} = \left\{\mathbf{g}| \mathbf{g}:\mathbb{R}^{n} \to \mathbb{Y}^\prime\right\}.
-\]
-Оптимизационная задача \ldots:
-\[
-	\mathbf{g} = \arg\min_{\mathbf{g} \in \mathfrak{G}} \mathcal{L}\bigr(\ldots\bigr),
-\]
-где $\mathcal{L}$~--- функция ошибки.
-
-\bigskip
-\footnotetext[1]{\textit{Lopez-Paz D., Bottou L., Scholkopf B., Vapnik V.} Unifying distillation and privileged information // ICLR, 2016.}
-\footnotetext[2]{\textit{Hinton G., Vinyals O., Dean J.} Distilling the knowledge in a neural network // NIPS, 2015.}
-\end{frame}
-
 %----------------------------------------------------------------------------------------------------------
-\section{Предложенный метод \ldots}
-\begin{frame}{Предложенный метод \ldots}
-~\\[-1mm]
-Заданы
-\begin{enumerate}[1)]
-	\item \ldots,
-	\item \ldots.
-\end{enumerate}
-
-\medskip
-Параметрические семейства:
+\begin{frame}{FGMKD: постановка задачи}
+\small
+Имеем данные \(\mathfrak{D}=\{(\mathbf{x}_j,y_j)\}_{j=1}^{n}\),
+ансамбль учителей \(\{T_i(\cdot\mid \mathbf{x})\}_{i=1}^{M}\) и студент \(S_\theta(\cdot\mid \mathbf{x})\).
+Центроид учителей:
 \[
-\setlength\abovedisplayskip{0pt}
-\mathfrak{F} = \left\{\mathbf{f}| \mathbf{f} = \text{softmax}\bigr(\mathbf{v}\bigr(\mathbf{x}\bigr)/T\bigr), \quad \mathbf{v}: \mathbb{R}^{n} \to \mathbb{R}^K \right\},
+\hat{T}(\cdot\mid\mathbf{x})=\frac{1}{M}\sum_{i=1}^{M}T_i(\cdot\mid\mathbf{x}).
+\]
+Fidelity-метрики:
+\[
+F_i(\theta)=\mathbb{E}_{\mathbf{x}}\mathrm{KL}\!\left(T_i(\cdot\mid\mathbf{x})\ \|\ S_\theta(\cdot\mid\mathbf{x})\right),\quad
+F_{\mathrm{avg}}(\theta)=\frac{1}{M}\sum_{i=1}^{M}F_i(\theta),
 \]
 \[
-\mathfrak{G} = \left\{\mathbf{g}| \mathbf{g} = \text{softmax}\bigr(\mathbf{z}\bigr(\mathbf{x}\bigr)/T\bigr), \quad \mathbf{z}: \mathbb{R}^n \to \mathbb{R}^K \right\},
+F_{\mathrm{cent}}(\theta)=\mathbb{E}_{\mathbf{x}}\mathrm{KL}\!\left(\hat{T}(\cdot\mid\mathbf{x})\ \|\ S_\theta(\cdot\mid\mathbf{x})\right).
 \]
-где~\ldots.
-
-\medskip
-Функция ошибки
+Diversity (разброс учителей) и декомпозиция:
 \[
-\setlength\abovedisplayskip{0pt}
-\begin{aligned}
-   \mathcal{L}\bigr(\mathbf{g}\bigr) = &-\sum_{i=1}^{m}\underbrace{{\sum_{k=1}^{K}y^k_i\log\mathbf{g}\bigr(\mathbf{x}_i\bigr)\bigr|_{T=1}}}_{\text{исходная функция потерь}}- \sum_{i=1}^{m}\underbrace{{\sum_{k=1}^{K}\mathbf{f}\bigr(\mathbf{x}_i\bigr)\bigr|_{T=T_0}\log\mathbf{g}\bigr(\mathbf{x}_i\bigr)\bigr|_{T=T_0}}}_{\text{слагаемое дистилляции}},
-\end{aligned}
-\setlength\belowdisplayskip{0pt}
+D_{\mathrm{div}}=\mathbb{E}_{\mathbf{x}}\frac{1}{M}\sum_{i=1}^{M}\mathrm{KL}\!\left(T_i(\cdot\mid\mathbf{x})\ \|\ \hat{T}(\cdot\mid\mathbf{x})\right),
+\qquad
+F_{\mathrm{avg}}(\theta)=D_{\mathrm{div}}+F_{\mathrm{cent}}(\theta).
 \]
-где~\ldots.
-
-Оптимальная модель выбирается из класса,
-$\hat{\mathbf{g}} = \arg\min\limits_{\mathbf{g} \in \mathfrak{G}_{\text{cl}}} \mathcal{L}\bigr(\mathbf{g}\bigr).$
 \end{frame}
-
-%----------------------------------------------------------------------------------------------------------
-\section{Анализ предложенного метода \ldots}
-\begin{frame}{Анализ предложенного метода \ldots}
-\justifying
-
-На графике показана зависимость значения параметров$w_i$ в зависимости от параметра~$l_1$-регуляризации~$C$.
+%---------------------------------------------------------------------------------------------------
+\begin{frame}{FGMKD: эксперименты}
+\small
 \begin{figure}[h!]
-\includegraphics[width=0.45\textwidth]{../figures/log_reg_cs_exp.eps}
-\includegraphics[width=0.45\textwidth]{../figures/log_reg_cs_exp.eps}
+    \centering
+  \begin{minipage}{0.9\textwidth}
+    \includegraphics[width=\linewidth]{sergey_1_exp.jpg}
+    
+  \end{minipage}\hfill
 \end{figure}
-
-С увеличением параметра регуляризации~$C$ число ненулевых параметров~$w_i$ уменьшается.
-
-\end{frame}
-
-%----------------------------------------------------------------------------------------------------------
-\section{Выводы}
-\begin{frame}{Выводы}
-\justifying
-	\begin{enumerate}
-	\justifying
-	    \item Предложен \ldots.
-        \item Доказаны теоремы \ldots, 
-        \begin{itemize}
-            \item[---] \ldots,
-            \item[---] \ldots.
-        \end{itemize}
-        \item Предложен метод \ldots
-        \begin{itemize}
-            \item[---] \ldots,
-            \item[---] \ldots.
-        \end{itemize}
-        \item Предложены методы \ldots
-        \begin{itemize}
-            \item[---] \ldots,
-            \item[---] \ldots.
-        \end{itemize}
-        \item Предложена вероятностная интерпретации \ldots.
-	\end{enumerate}
+Обучение с центроидом дает прирост в качестве и в уменьшении \(\operatorname{KL}\).
 \end{frame}
 %----------------------------------------------------------------------------------------------------------
+\begin{frame}{FGMKD: эксперименты}
+\small
+\begin{figure}[h!]
+    \centering
+  \begin{minipage}{0.9\textwidth}
+    \includegraphics[width=\linewidth]{fideity_vs_gen_best-3.png}
+  \end{minipage}\hfill
+\end{figure}
+Получили подтверждение оценки: 
+\begin{equation}
+\label{eq:risk_bound_main}
+\bigl| R_{\mathrm{sup}}(S_\theta) - R_{\mathrm{sup}}(\hat{T}) \bigr|
+\;\le\;
+F_{\mathrm{cen}}(\theta)+C(\delta)\,\varepsilon \,\sqrt{F_{\mathrm{cen}}(\theta)},
+\end{equation}
+для подходящих констант $\detlta \in (0, 1)$ и $\varepsilon \ge 0$.
+\end{frame}
+%----------------------------------------------------------------------------------------------------------
+\begin{frame}{Дальнейшие исследования}
+Дистиллляций разнородных моделей:
+\begin{itemize}
+    \item Провести эксперименты на задаче классификации.
+    \item Исследование влияний разных функций аггрегаций.
+    \item Дистилляция в двух направлениях.
+\end{itemize}
+FGMKD:
+\begin{itemize}
+    \item Экспеименты на более сложных выборках.
+    \item Взвешенные голосование учителей.
+    \item Исследовать влияние плохих учителей.
+    \item Учителя с ограниченным знанием (не знаю про существование остальных классов).
+    \item Добавление шума в данных.
+\end{itemize}
+\end{frame}
+%----------------------------------------------------------------------------------------------------------
+% \begin{frame}{Источники}
+%     \bibliographystyle{plain}
+%     \bibliography{ib_in_model_selection}
+% \end{frame}
+%-----------------------------------------------------------------------------------------------------
+
 
 \end{document} 

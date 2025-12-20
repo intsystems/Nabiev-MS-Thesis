@@ -1,158 +1,212 @@
-\documentclass{article}
-\usepackage{arxiv}
+% !TEX TS-program = pdflatex
+\documentclass[11pt]{article}
 
-\usepackage[utf8]{inputenc}
-\usepackage[english, russian]{babel}
+% ---------- Preamble ----------
+\usepackage[a4paper,margin=1in]{geometry}
 \usepackage[T1]{fontenc}
-\usepackage{url}
-\usepackage{booktabs}
-\usepackage{amsfonts}
-\usepackage{nicefrac}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
 \usepackage{microtype}
-\usepackage{lipsum}
-\usepackage{graphicx}
 \usepackage{natbib}
-\usepackage{doi}
 
+\usepackage{amsmath,amssymb,mathtools, amsthm}
+\usepackage{physics}
+\usepackage{bm}
+\usepackage{siunitx}
 
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage[nameinlink]{cleveref}
 
-\title{A template for the \emph{arxiv} style}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
 
-\author{ David S.~Hippocampus\thanks{Use footnote for providing further
-		information about author (webpage, alternative
-		address)---\emph{not} for acknowledging funding agencies.} \\
-	Department of Computer Science\\
-	Cranberry-Lemon University\\
-	Pittsburgh, PA 15213 \\
-	\texttt{hippo@cs.cranberry-lemon.edu} \\
-	%% examples of more authors
-	\And
-	Elias D.~Striatum \\
-	Department of Electrical Engineering\\
-	Mount-Sheikh University\\
-	Santa Narimana, Levand \\
-	\texttt{stariate@ee.mount-sheikh.edu} \\
-	%% \AND
-	%% Coauthor \\
-	%% Affiliation \\
-	%% Address \\
-	%% \texttt{email} \\
-	%% \And
-	%% Coauthor \\
-	%% Affiliation \\
-	%% Address \\
-	%% \texttt{email} \\
-	%% \And
-	%% Coauthor \\
-	%% Affiliation \\
-	%% Address \\
-	%% \texttt{email} \\
-}
+% Toggle: tech report vs blog
+\newif\iftech
+\techtrue   % <- set to \techfalse for a shorter, blog-style build
+
+% Handy macros
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{theorem}{Theorem}
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\KL}{\mathrm{KL}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\dataset}{\mathcal{D}}
+\newcommand{\model}{\mathcal{M}}
+\newcommand{\student}{S}
+\newcommand{\teachers}{\{T_i\}_{i=1}^M}
+\newcommand{\todo}[1]{\textcolor{red}{\textbf{TODO:} #1}}
+
+% Meta
+\title{Heterogeneous Knowledge Distillation}
+\author{Nabiev M. \and Bakhteev O.}
 \date{}
 
-\renewcommand{\shorttitle}{\textit{arXiv} Template}
-
-%%% Add PDF metadata to help others organize their library
-%%% Once the PDF is generated, you can check the metadata with
-%%% $ pdfinfo template.pdf
-\hypersetup{
-pdftitle={A template for the arxiv style},
-pdfsubject={q-bio.NC, q-bio.QM},
-pdfauthor={David S.~Hippocampus, Elias D.~Striatum},
-pdfkeywords={First keyword, Second keyword, More},
-}
-
+% ---------- Document ----------
 \begin{document}
 \maketitle
-
+% ----- Abstract / Motivation -----
 \begin{abstract}
-	\lipsum[1]
+We present a cross-architecture knowledge distillation method for transferring information between heterogeneous networks such as RNNs and CNNs. The key challenge is that their intermediate representations have different structure and depth, so a fixed, hand-crafted layer correspondence is often unreliable. Our approach learns a soft, input-dependent alignment between teacher and student layers, automatically deciding which internal components should match for each sample. Training augments the usual supervised objective with an additional term that encourages the student’s internal representations to become closer to the teacher’s under this learned alignment, while allowing different normalization choices depending on which model acts as the teacher. 
+%Experiments show that the proposed alignment consistently improves the student over standard distillation baselines and yields interpretable layer correspondences, without requiring architecture-specific matching rules.
 \end{abstract}
 
-
-\keywords{First keyword \and Second keyword \and More}
-
 \section{Introduction}
-\lipsum[2]
-\lipsum[3]
 
-\section{Headings: first level}
-\label{sec:headings}
-
-\lipsum[4] See Section \ref{sec:headings}.
-
-\subsection{Headings: second level}
-\lipsum[5]
-\begin{equation}
-	\xi _{ij}(t)=P(x_{t}=i,x_{t+1}=j|y,v,w;\theta)= {\frac {\alpha _{i}(t)a^{w_t}_{ij}\beta _{j}(t+1)b^{v_{t+1}}_{j}(y_{t+1})}{\sum _{i=1}^{N} \sum _{j=1}^{N} \alpha _{i}(t)a^{w_t}_{ij}\beta _{j}(t+1)b^{v_{t+1}}_{j}(y_{t+1})}}
-\end{equation}
-
-\subsubsection{Headings: third level}
-\lipsum[6]
-
-\paragraph{Paragraph}
-\lipsum[7]
+\paragraph{Contributions.}
 
 
+% ----- Problem Statement -----
+\section{Problem statement}
+Let \(\mathfrak{D} = \{(\mathbf{x}_i, y_i)\}_{i=1}^n\)~-- image dataset. We will work with two models \(R\) (RNN) and \(C\) (CNN). Their hidden representations:
+\[
+    \mathbf{h}_1^R, \dots, \mathbf{h}_K^R \in \mathbb{R}^{D_1} \quad \text{and} \quad 
+    \mathbf{A}_1^C, \dots, \mathbf{A}_N^C \in \mathbb{R}^{D_2}
+\]
+For aggregation we will use
+\[
+    \mathbf{F}_k^R = \mathbf{u}_k^T\mathbf{u}_k \in \mathbb{R}^{d\times d}, \; \text{where} \; \mathbf{u}_k = \operatorname{aggr}(\mathbf{h}^R_1, \dots, \mathbf{h}^R_K) \in \mathbb{R}^{d}
+\]
+\[
+    \mathbf{F}_j^C = \frac{1}{P_j} \mathbf{B}_j^T \mathbf{B}_j \in \mathbb{R}^{d\times d}, \; \text{where} \; \mathbf{B}_j = \operatorname{Flatten(}\operatorname{Conv}(\mathbf{A}_j^C)) \in \mathbb{R}^{d \times P_j}
+\]
+Having these aggregated matrices, let's define cost matrix \(\mathbf{C}\in \mathbf{R}^{K\times N}\), as \(C_{kj} = \| \mathbf{F}_k^R - \mathbf{F}_j^C \|_F^2\) and weight matrix \(\boldsymbol{\Gamma} = \operatorname{Softmax(- \mathbf{C})}\).
+Minimize a following loss function, 
+\[
+    \mathcal{L} = \mathcal{L} + \lambda \mathbb{E}_{\mathbf{x}} \sum_{k=1}^K \sum_{j=1}^N \Gamma_{kj}(\mathbf{x}) C_{kj}(\mathbf{x})
+\]
+Based on the teacher (RNN or CNN) we can normalize $\boldsymbol{\Gamma}$ row-wise or column-wise.
 
-\section{Examples of citations, figures, tables, references}
-\label{sec:others}
+\section{Problem statement}
 
-\subsection{Citations}
-Citations use \verb+natbib+. The documentation may be found at
-\begin{center}
-	\url{http://mirrors.ctan.org/macros/latex/contrib/natbib/natnotes.pdf}
-\end{center}
+Let \(\mathfrak{D}=\{(\mathbf{x}_i,y_i)\}_{i=1}^n\) be a labeled image dataset, where \(\mathbf{x}_i\in\mathcal{X}\) and \(y_i\in\mathcal{Y}\).
+We consider two architectures that solve the same task: an RNN-based network \(R\) and a CNN-based network \(C\).
+In our method, one network plays the role of a \emph{teacher} \(T\) and the other is the \emph{student} \(S\), where
+\[
+T\in\{R,C\},\qquad S\in\{R,C\},\qquad T\neq S.
+\]
+The student is trained using the standard supervised objective augmented with a cross-architecture representation alignment term.
 
-Here is an example usage of the two main commands (\verb+citet+ and \verb+citep+): Some people thought a thing \citep{kour2014real, hadash2018estimate} but other people thought something else \citep{kour2014fast}. Many people have speculated that if we knew exactly why \citet{kour2014fast} thought this\dots
+\subsection{Teacher and student representations}
 
-\subsection{Figures}
-\lipsum[10]
-See Figure \ref{fig:fig1}. Here is how you add footnotes. \footnote{Sample of the first footnote.}
-\lipsum[11]
+For an input \(\mathbf{x}\), let the teacher expose a collection of intermediate representations
+\[
+\mathbf{z}^{T}_1(\mathbf{x}),\dots,\mathbf{z}^{T}_{K_T}(\mathbf{x}),
+\]
+and the student expose
+\[
+\mathbf{z}^{S}_1(\mathbf{x}),\dots,\mathbf{z}^{S}_{K_S}(\mathbf{x}).
+\]
+The two sets may have different cardinalities \(K_T\neq K_S\) and different tensor structure.
 
-\begin{figure}
-	\centering
-	\includegraphics[width=0.5\textwidth]{../figures/log_reg_cs_exp.eps}
-	\caption{Sample figure caption.}
-	\label{fig:fig1}
-\end{figure}
+In particular, when \(T\) (or \(S\)) is an RNN, we interpret \(\mathbf{z}^{(\cdot)}_k(\mathbf{x})\) as a sequence/token representation
+\(\mathbf{h}_k(\mathbf{x})\in\mathbb{R}^{D_1}\). When \(T\) (or \(S\)) is a CNN, we interpret \(\mathbf{z}^{(\cdot)}_j(\mathbf{x})\) as a feature map \(\mathbf{A}_j(\mathbf{x})\in\mathbb{R}^{D_2\times H_j\times W_j}\).
+Our objective is to define a differentiable matching between teacher and student layers and encourage the student to mimic the teacher under this matching.
 
-\subsection{Tables}
-See awesome Table~\ref{tab:table}.
+\subsection{Aggregation into a shared space}
 
-The documentation for \verb+booktabs+ (`Publication quality tables in LaTeX') is available from:
-\begin{center}
-	\url{https://www.ctan.org/pkg/booktabs}
-\end{center}
+Because the raw representations have different shape and semantics, we map each intermediate representation into a shared space of
+\(d\times d\) positive semi-definite (PSD) matrices capturing second-order structure.
 
+\paragraph{Vector (RNN-like) representations.}
+Given a teacher or student representation that can be summarized as a vector, we first apply an aggregation/projection operator
+\[
+\mathbf{u}_k(\mathbf{x})
+:=\operatorname{aggr}_k\big(\mathbf{z}_1(\mathbf{x}), \dots\mathbf{z}_k(\mathbf{x})\big)\in\mathbb{R}^{d},
+\]
+where \(\operatorname{aggr}_k(\cdot)\) takes a subset of tokens and may consist of pooling over them followed by a learnable linear projection. We then form a rank-1 PSD matrix
+\[
+\mathbf{F}_k(\mathbf{x}) := \mathbf{u}_k(\mathbf{x})\,\mathbf{u}_k(\mathbf{x})^\top \in \mathbb{R}^{d\times d}.
+\]
 
-\begin{table}
-	\caption{Sample table title}
-	\centering
-	\begin{tabular}{lll}
-		\toprule
-		\multicolumn{2}{c}{Part}                   \\
-		\cmidrule(r){1-2}
-		Name     & Description     & Size ($\mu$m) \\
-		\midrule
-		Dendrite & Input terminal  & $\sim$100     \\
-		Axon     & Output terminal & $\sim$10      \\
-		Soma     & Cell body       & up to $10^6$  \\
-		\bottomrule
-	\end{tabular}
-	\label{tab:table}
-\end{table}
+\paragraph{Spatial (CNN-like) representations.}
+Given a feature map \(\mathbf{A}_j(\mathbf{x})\in\mathbb{R}^{D_2\times H_j\times W_j}\), we first map channels to \(d\) dimensions using a learnable convolution:
+\[
+\widetilde{\mathbf{A}}_j(\mathbf{x}) := \operatorname{Conv}\big(\mathbf{A}_j(\mathbf{x})\big)\in\mathbb{R}^{d\times H_j\times W_j}.
+\]
+Let \(P_j:=H_jW_j\) and define the matrix of spatial features
+\[
+\mathbf{B}_j(\mathbf{x})
+:= \operatorname{Flatten}\big(\widetilde{\mathbf{A}}_j(\mathbf{x})\big)
+\in\mathbb{R}^{d\times P_j}.
+\]
+We aggregate spatial structure via the normalized Gram matrix
+\[
+\mathbf{F}_j(\mathbf{x})
+:= \frac{1}{P_j}\,\mathbf{B}_j(\mathbf{x})\,\mathbf{B}_j(\mathbf{x})^\top
+\in\mathbb{R}^{d\times d}.
+\]
+Applying the appropriate construction to each intermediate representation yields:
+\[
+\{\mathbf{F}^T_k(\mathbf{x})\}_{k=1}^{K_T}\subset\mathbb{R}^{d\times d},
+\qquad
+\{\mathbf{F}^S_j(\mathbf{x})\}_{j=1}^{K_S}\subset\mathbb{R}^{d\times d}.
+\]
 
-\subsection{Lists}
+\subsection{Soft layer matching}
+
+We define the pairwise cost between teacher layer \(k\) and student layer \(j\) by the squared Frobenius distance:
+\[
+\mathbf{C}(\mathbf{x})\in\mathbb{R}^{K_T\times K_S},
+\qquad
+C_{kj}(\mathbf{x})
+:= \left\lVert \mathbf{F}^T_k(\mathbf{x}) - \mathbf{F}^S_j(\mathbf{x}) \right\rVert_F^2.
+\]
+We convert costs into a differentiable soft alignment matrix \(\boldsymbol{\Gamma}(\mathbf{x})\in\mathbb{R}^{K_T\times K_S}\) using a softmax over negative costs:
+\[
+\boldsymbol{\Gamma}(\mathbf{x})
+:= \operatorname{Softmax}\!\big(-\mathbf{C}(\mathbf{x})/\tau\big),
+\]
+where \(\tau>0\) is an optional temperature.
+
+Crucially, the normalization direction is chosen to reflect the distillation direction:
 \begin{itemize}
-	\item Lorem ipsum dolor sit amet
-	\item consectetur adipiscing elit.
-	\item Aliquam dignissim blandit est, in dictum tortor gravida eget. In ac rutrum magna.
+    \item \textbf{Teacher-to-student matching (row-wise)}:
+    \(\sum_{j=1}^{K_S}\Gamma_{kj}(\mathbf{x})=1\) for each teacher layer \(k\).
+    Then each teacher representation is matched to a mixture of student representations.
+
+    \item \textbf{Student-to-teacher matching (column-wise)}:
+    \(\sum_{k=1}^{K_T}\Gamma_{kj}(\mathbf{x})=1\) for each student layer \(j\).
+    Then each student representation is matched to a mixture of teacher representations.
 \end{itemize}
+Both variants produce an input-dependent correspondence \(\boldsymbol{\Gamma}(\mathbf{x})\), allowing different samples to induce different layer alignments.
+
+\subsection{Distillation objective}
+
+Let \(\mathcal{L}_{\text{task}}(\mathbf{x},y;\theta_S)\) denote the standard supervised loss of the student (e.g., cross-entropy),
+and let \(\theta_S\) be the student parameters. The teacher parameters are fixed.
+We train the student by minimizing the expected objective
+\[
+\min_{\theta_S}\;
+\mathbb{E}_{(\mathbf{x},y)\sim\mathfrak{D}}
+\Big[
+\mathcal{L}_{\text{task}}(\mathbf{x},y;\theta_S)
++
+\lambda
+\sum_{k=1}^{K_T}\sum_{j=1}^{K_S}
+\Gamma_{kj}(\mathbf{x})\, C_{kj}(\mathbf{x})
+\Big],
+\]
+where \(\lambda\ge 0\) controls the strength of the distillation term.
+
+The distillation regularizer encourages the student to produce intermediate representations whose second-order statistics match those of the teacher,
+while the soft alignment \(\boldsymbol{\Gamma}(\mathbf{x})\) resolves the architectural mismatch by learning which teacher layers should correspond to which student layers.
 
 
-\bibliographystyle{unsrtnat}
-\bibliography{references}
+% ----- Experiments -----
+\section{Experiments}
+
+
+\section{Conclusion.} 
+
+\bibliographystyle{plain}
+\bibliography{heterogen_kd_ot}
 
 \end{document}
